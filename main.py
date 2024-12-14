@@ -50,7 +50,7 @@ def update(message):  # Добавляем аргумент message
     wb.close()
 
 
-def create_buttons_podpiska():
+def create_buttons_subscription():
     marcup = types.InlineKeyboardMarkup(row_width=True)
     marcup.add(
         types.InlineKeyboardButton(text="канал", url="https://t.me/goodday_marketing"),
@@ -181,7 +181,6 @@ def message_photo(message, data):
 def message_sms(message, data):
     try:
         sms1 = message.text
-        print(data)  # Проверяем, что приходит в data (ожидаем число)
 
         # Создаем клавиатуру для администратора
         marcup = types.InlineKeyboardMarkup(row_width=2)
@@ -227,7 +226,6 @@ def message_sms(message, data):
 def answer_true(call):
     try:
         data = call.data.split("|")
-        print(data)
 
         # Отправляем сообщение пользователю
         bot.send_message(
@@ -327,7 +325,6 @@ def question(call):
     global question_and_answer
     data = call.data.split("|")
     marcup = types.InlineKeyboardMarkup(row_width=2)
-    print(data)
     for i in range(len(question_and_answer)):
         # Проверяем, соответствует ли вопрос выбранному
         if question_and_answer[i]["number"] == data[1]:
@@ -411,8 +408,7 @@ def save_month_data(call):
     bot.send_message(
         call.message.chat.id,
         f"Отлично! Теперь мы знаем когда тебя поздравлять 🙃🤗\n"
-        f"Для продолжения работы подпишитесь на канал", reply_markup=create_buttons_podpiska()
-    )
+        f"Для продолжения работы подпишитесь на канал", reply_markup=create_buttons_subscription())
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("check"))
@@ -424,12 +420,11 @@ def check(call):
             bot.send_message(call.message.chat.id, config.text_5)
             break
     else:
-        bot.send_message(call.message.chat.id, "Подпишитесь пожалуйста", reply_markup=create_buttons_podpiska())
+        bot.send_message(call.message.chat.id, "Подпишитесь пожалуйста", reply_markup=create_buttons_subscription())
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("month|"))
 def save_month(call):
-    print(call.data)
     bot.delete_message(call.message.chat.id, call.message.id)
     bot.send_message(call.message.chat.id, f"Отлично, теперь выберите день рождения",
                      reply_markup=create_buttons_day(call.data))
@@ -602,7 +597,89 @@ def connect(message):
     bot.send_message(message.chat.id, "Стать спонсором @ulyana_goodday")
 
 
+@bot.message_handler(func=lambda message: message.chat.id in config.admin_id, commands=["users"])
+def users(message):
+
+    bot.send_message(message.chat.id, "список пользователей которые зарегистрировались",
+                     reply_markup=create_buttons_users())
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("users|"))
+def information_users(call):
+    data = call.data.split("|")
+    file_name = "users.xlsx"
+    if not os.path.exists(file_name):
+        create_excel_file()
+        raise FileNotFoundError(f"Файл {file_name} не найден")
+
+    workbook = op.load_workbook(file_name, data_only=True)
+    sheet = workbook.active
+    for row in sheet.iter_rows(min_row=2):
+        if row[0].value == int(data[1]):
+            queshtion = 0
+            for i in range(7, 38):
+                if row[i].value != "False":
+                    queshtion += 1
+            marcup = types.InlineKeyboardMarkup(row_width=1)
+            marcup.add(types.InlineKeyboardButton(text="delete", callback_data=f"delete|{row[0].value}"))
+            bot.send_message(call.message.chat.id, f"id: {row[0].value}\n"
+                                                   f"username: {row[1].value}\n"
+                                                   f"first_name: {row[2].value}\n"
+                                                   f"Имя: {row[3].value}\n"
+                                                   f"Пол: {row[4].value}\n"
+                                                   f"number phone: {row[5].value}\n"
+                                                   f"happy birthday: {row[6].value}\n"
+                                                   f"Правильно ответил: {queshtion}",
+                             reply_markup=marcup)
+            break
+
+    workbook.close()
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("delete|"))
+def delete_users(call):
+    data = call.data.split("|")
+    file_name = "users.xlsx"
+
+    if not os.path.exists(file_name):
+        create_excel_file()
+        raise FileNotFoundError(f"Файл {file_name} не найден.")
+
+    workbook = op.load_workbook(file_name)
+    sheet = workbook.active
+    # Проходим по строкам в обратном порядке
+    for row in range(sheet.max_row, 1, -1):
+        if sheet.cell(row=row, column=1).value == int(data[1]):
+            sheet.delete_rows(row)
+            bot.send_message(call.message.chat.id, "Пользователь успешно удалён")
+            bot.send_message(int(data[1]), f"Ваш аккаунт был удален, "
+                             f"но не расстраивайтесь, можете его снова создать и выполнять квесты")
+
+    workbook.save(file_name)
+    workbook.close()
+
+
 """Кнопки"""
+
+
+def create_buttons_users():
+    marcup = types.InlineKeyboardMarkup(row_width=1)
+    file_name = "users.xlsx"
+    if not os.path.exists(file_name):
+        create_excel_file()
+        raise FileNotFoundError(f"Файл {file_name} не найден.")
+
+    workbook = op.load_workbook(file_name, data_only=True)
+    sheet = workbook.active
+
+    for row in sheet.iter_rows(min_row=2):
+        marcup.add(
+            types.InlineKeyboardButton(text=f"пользователь @{row[1].value}", callback_data=f"users|{row[0].value}")
+        )
+
+    workbook.save(file_name)
+    workbook.close()
+    return marcup
 
 
 def create_buttons_quiz(questions):
